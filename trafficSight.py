@@ -796,7 +796,7 @@ class VideoLabel(QLabel):
 class SIGAPWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🚦 SIGAP — Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
+        self.setWindowTitle("SIGAP - Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
         self.setMinimumSize(1500, 900)
         self._setup_theme()
 
@@ -837,14 +837,14 @@ class SIGAPWindow(QMainWindow):
         for n in STREAM_URLS: self.stream_combo.addItem(n)
         self.stream_combo.setFixedHeight(32)
         self.stream_combo.currentTextChanged.connect(self.change_stream)
-        cl.addWidget(QLabel("📹")); cl.addWidget(self.stream_combo)
+        cl.addWidget(QLabel("CAMERA INPUT:")); cl.addWidget(self.stream_combo)
         cl.addStretch()
 
-        self.btn_edit_lines = QPushButton("⚙️ Edit Garis"); self.btn_edit_lines.setObjectName("BtnNormal")
-        self.btn_pause = QPushButton("⏸ Pause"); self.btn_pause.setObjectName("BtnWarning")
-        self.btn_stop  = QPushButton("⏹ Stop");  self.btn_stop.setObjectName("BtnDanger")
+        self.btn_edit_lines = QPushButton("CONFIG LINES"); self.btn_edit_lines.setObjectName("BtnNormal")
+        self.btn_pause = QPushButton("PAUSE"); self.btn_pause.setObjectName("BtnWarning")
+        self.btn_stop  = QPushButton("STOP");  self.btn_stop.setObjectName("BtnDanger")
         
-        self.btn_edit_lines.setFixedSize(110,32)
+        self.btn_edit_lines.setFixedSize(140,32)
         for b in [self.btn_pause, self.btn_stop]: b.setFixedSize(110,32)
         
         self.btn_edit_lines.clicked.connect(self.open_edit_lines)
@@ -885,8 +885,8 @@ class SIGAPWindow(QMainWindow):
         gs = QFrame(); gs.setObjectName("MetricCard")
         gl = QVBoxLayout(gs)
         ghr = QHBoxLayout()
-        ghr.addWidget(QLabel("⚙️ GEOSPATIAL"))
-        self.lbl_calib = QLabel("✅ AKTIF")
+        ghr.addWidget(QLabel("GEOSPATIAL CALIBRATION"))
+        self.lbl_calib = QLabel("ACTIVE")
         self.lbl_calib.setStyleSheet("color:#2ecc71;font-size:13px;font-weight:bold;")
         ghr.addStretch(); ghr.addWidget(self.lbl_calib)
         gl.addLayout(ghr)
@@ -898,11 +898,11 @@ class SIGAPWindow(QMainWindow):
         # Line counter summary
         lc_frame = QFrame(); lc_frame.setObjectName("MetricCard")
         lc_layout = QVBoxLayout(lc_frame)
-        lc_title = QLabel("📊 KENDARAAN LEWAT GARIS")
-        lc_title.setStyleSheet("color:#00ffcc;font-size:11px;font-weight:bold;")
+        lc_title = QLabel("INTERSECTION VOLUME")
+        lc_title.setStyleSheet("color:#00ffcc;font-size:11px;font-weight:bold;letter-spacing:1px;")
         lc_layout.addWidget(lc_title)
         self.lbl_line_detail = QLabel("Motor: 0 | Mobil: 0 | Truk: 0")
-        self.lbl_line_detail.setStyleSheet("color:#e2e8f0;font-size:11px;")
+        self.lbl_line_detail.setStyleSheet("color:#e2e8f0;font-size:11px;font-family:Consolas;")
         self.lbl_line_detail.setWordWrap(True)
         lc_layout.addWidget(self.lbl_line_detail)
         right.addWidget(lc_frame)
@@ -922,7 +922,7 @@ class SIGAPWindow(QMainWindow):
         self.known_ids     = set()
         self.overspeed_cnt = 0
         self.status_bar    = QStatusBar(); self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("SIGAP siap.")
+        self.status_bar.showMessage("SYSTEM READY.")
 
         # Timer update line counter info setiap 2 detik
         self._line_timer = QTimer()
@@ -934,24 +934,24 @@ class SIGAPWindow(QMainWindow):
     # ── THEME ──────────────────────────────────────────────
     def _setup_theme(self):
         self.setStyleSheet("""
-            QMainWindow,QWidget{background:#0a0e17;}
-            QLabel{color:#e2e8f0;}
-            QFrame#VideoFrame{background:#000;border:2px solid #1e293b;border-radius:8px;}
-            QFrame#ControlFrame{background:#0f172a;border-radius:8px;border:1px solid #1e293b;}
-            QFrame#MetricCard{background:#1e293b;border-radius:6px;border:1px solid #334155;}
-            QPushButton{color:#fff;border:none;border-radius:5px;font-weight:bold;background:#3b82f6;}
-            QPushButton:hover{background:#60a5fa;}
-            QPushButton#BtnNormal{background:#3b82f6;}
-            QPushButton#BtnNormal:hover{background:#60a5fa;}
-            QPushButton#BtnWarning{background:#f59e0b;}
-            QPushButton#BtnWarning:hover{background:#fbbf24;}
-            QPushButton#BtnDanger{background:#ef4444;}
-            QPushButton#BtnDanger:hover{background:#f87171;}
-            QComboBox{background:#1e293b;color:#fff;border:1px solid #334155;border-radius:4px;padding:4px 8px;font-weight:bold;min-width:160px;}
-            QComboBox QAbstractItemView{background:#0f172a;color:#fff;selection-background-color:#3b82f6;}
-            QTableWidget#LogTable{background:#0f172a;alternate-background-color:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;gridline-color:#334155;font-size:11px;}
-            QHeaderView::section{background:#1e293b;color:#94a3b8;font-weight:bold;border:none;border-bottom:2px solid #334155;padding:4px;}
-            QStatusBar{background:#0a0e17;color:#94a3b8;border-top:1px solid #1e293b;}
+            QMainWindow,QWidget{background:#0b0f19; font-family:'Segoe UI', 'Inter', sans-serif;}
+            QLabel{color:#cbd5e1;}
+            QFrame#VideoFrame{background:#000;border:1px solid #1e293b;border-radius:2px;}
+            QFrame#ControlFrame{background:#0f172a;border-radius:2px;border:1px solid #1e293b;}
+            QFrame#MetricCard{background:#111827;border-radius:2px;border:1px solid #1f2937;}
+            QPushButton{color:#fff;border:none;border-radius:2px;font-weight:bold;background:#1d4ed8;letter-spacing:1px;}
+            QPushButton:hover{background:#2563eb;}
+            QPushButton#BtnNormal{background:#1d4ed8;}
+            QPushButton#BtnNormal:hover{background:#2563eb;}
+            QPushButton#BtnWarning{background:#d97706;}
+            QPushButton#BtnWarning:hover{background:#f59e0b;}
+            QPushButton#BtnDanger{background:#be123c;}
+            QPushButton#BtnDanger:hover{background:#e11d48;}
+            QComboBox{background:#111827;color:#f8fafc;border:1px solid #334155;border-radius:2px;padding:4px 8px;font-weight:bold;min-width:160px;}
+            QComboBox QAbstractItemView{background:#0f172a;color:#fff;selection-background-color:#1d4ed8;}
+            QTableWidget#LogTable{background:#0f172a;alternate-background-color:#1e293b;color:#f1f5f9;border:1px solid #1e293b;border-radius:2px;gridline-color:#334155;font-size:11px;}
+            QHeaderView::section{background:#0f172a;color:#94a3b8;font-weight:bold;letter-spacing:1px;border:none;border-bottom:1px solid #334155;padding:6px;}
+            QStatusBar{background:#0b0f19;color:#64748b;border-top:1px solid #1e293b;font-family:Consolas;}
         """)
 
     # ── STREAM INIT ────────────────────────────────────────
@@ -989,9 +989,9 @@ class SIGAPWindow(QMainWindow):
         self.video_thread.frame_ready.connect(self.update_frame)
         self.video_thread.stats_ready.connect(self.update_stats)
         self.video_thread.start()
-        self.status_labels['status'].setText("● LIVE")
-        self.status_labels['status'].setStyleSheet("color:#10b981;font-size:16px;font-weight:bold;")
-        self.status_bar.showMessage(f"Stream aktif — SIGAP v2.0 | DB: {DB_FILE}")
+        self.status_labels['status'].setText("STREAM ACTIVE")
+        self.status_labels['status'].setStyleSheet("color:#10b981;font-size:14px;font-weight:bold;")
+        self.status_bar.showMessage(f"Stream Online — SIGAP Core Engine | Database: {DB_FILE}")
 
     # ── FRAME UPDATE ───────────────────────────────────────
     def update_frame(self, frame):
@@ -1019,8 +1019,8 @@ class SIGAPWindow(QMainWindow):
                     self.lbl_overspeed.setText(str(self.overspeed_cnt))
 
             is_over = speed > OVERSPEED_KMH
-            color   = QColor("#ff4757") if is_over else QColor("#e2e8f0")
-            status  = "⚠️ OVERSPEED" if is_over else "✅ Normal"
+            color   = QColor("#ff4757") if is_over else QColor("#94a3b8")
+            status  = "VIOLATION" if is_over else "NORMAL"
             cols    = [f"#{obj_id}", name.upper(), f"{speed:.1f}", direction, status]
             for j, text in enumerate(cols):
                 item = QTableWidgetItem(text)
@@ -1052,23 +1052,23 @@ class SIGAPWindow(QMainWindow):
     def toggle_pause(self):
         if not hasattr(self, 'video_thread'): return
         paused = self.video_thread.pause()
-        self.btn_pause.setText("▶ Resume" if paused else "⏸ Pause")
-        self.status_labels['status'].setText("⏸ PAUSED" if paused else "● LIVE")
+        self.btn_pause.setText("RESUME" if paused else "PAUSE")
+        self.status_labels['status'].setText("STREAM PAUSED" if paused else "STREAM ACTIVE")
         self.status_labels['status'].setStyleSheet(
-            "color:#f0883e;font-size:16px;font-weight:bold;" if paused
-            else "color:#3fb950;font-size:16px;font-weight:bold;")
+            "color:#f0883e;font-size:14px;font-weight:bold;" if paused
+            else "color:#3fb950;font-size:14px;font-weight:bold;")
 
     def open_edit_lines(self):
         global IS_EDITING_LINES
         IS_EDITING_LINES = not IS_EDITING_LINES
         if IS_EDITING_LINES:
-            self.btn_edit_lines.setText("💾 Simpan Garis")
+            self.btn_edit_lines.setText("SAVE CONFIG")
             self.btn_edit_lines.setStyleSheet("background:#10b981;") # Green active
-            self.status_bar.showMessage("EDIT MODE: Tarik (drag) lingkaran merah di video untuk mengubah garis.")
+            self.status_bar.showMessage("CALIBRATION MODE: Drag the red nodes on the video frame to adjust counting lines.")
         else:
-            self.btn_edit_lines.setText("⚙️ Edit Garis")
+            self.btn_edit_lines.setText("CONFIG LINES")
             self.btn_edit_lines.setStyleSheet("") # Reset to theme
-            self.status_bar.showMessage("Stream aktif — SIGAP v2.0 | Edit Mode selesai.")
+            self.status_bar.showMessage("Stream Online — SIGAP Core Engine | Configuration saved.")
             save_lines_config()
             write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
@@ -1076,10 +1076,10 @@ class SIGAPWindow(QMainWindow):
         if hasattr(self, 'video_thread'):   self.video_thread.stop()
         if hasattr(self, 'detection_thread'): self.detection_thread.stop()
         self.streamer.stop()
-        self.status_labels['status'].setText("⏹ STOPPED")
-        self.status_labels['status'].setStyleSheet("color:#da3633;font-size:16px;font-weight:bold;")
+        self.status_labels['status'].setText("OFFLINE")
+        self.status_labels['status'].setStyleSheet("color:#da3633;font-size:14px;font-weight:bold;")
         self.btn_pause.setEnabled(False); self.btn_stop.setEnabled(False)
-        self.status_bar.showMessage("Stream dihentikan.")
+        self.status_bar.showMessage("Stream offline.")
 
     def change_stream(self, stream_name):
         global CURRENT_STREAM_URL
