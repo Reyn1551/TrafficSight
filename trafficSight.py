@@ -39,10 +39,38 @@ BUFFER_SECONDS = 60
 FALLBACK_FPS   = 25.0
 OVERSPEED_KMH  = 60.0
 SPEED_CAP_KMH  = 140.0
+LINES_FILE     = "counting_lines.json"
 
-# ── Virtual counting line (horizontal, Y coordinate in pixels) ──
-VIRTUAL_LINE_Y = 600   # tuning: geser ke posisi yang tepat di tengah jalan
+# ── Virtual counting line (4 Lengan Persimpangan) ──
+COUNTING_LINES = {
+    "Utara":  {"type": "H", "y": 310, "x1": 350, "x2": 700},
+    "Selatan":{"type": "H", "y": 580, "x1": 350, "x2": 750},
+    "Barat":  {"type": "V", "x": 150, "y1": 310, "y2": 580},
+    "Timur":  {"type": "V", "x": 970, "y1": 260, "y2": 520},
+}
 
+def load_lines_config():
+    global COUNTING_LINES
+    if os.path.exists(LINES_FILE):
+        try:
+            with open(LINES_FILE, "r") as f:
+                saved = json.load(f)
+                if CURRENT_STREAM_URL in saved:
+                    COUNTING_LINES.clear()
+                    COUNTING_LINES.update(saved[CURRENT_STREAM_URL])
+        except Exception as e:
+            write_log(f"Gagal memuat {LINES_FILE}: {e}")
+
+def save_lines_config():
+    saved = {}
+    if os.path.exists(LINES_FILE):
+        with open(LINES_FILE, "r") as f:
+            try:
+                saved = json.load(f)
+            except: pass
+    saved[CURRENT_STREAM_URL] = COUNTING_LINES
+    with open(LINES_FILE, "w") as f:
+        json.dump(saved, f, indent=4)
 
 # ===============================================================
 #  LOGGING
@@ -339,39 +367,80 @@ class SpeedEstimator:
 #  VIRTUAL LINE COUNTER
 # ===============================================================
 class VirtualLineCounter:
-    def __init__(self, line_y: int = VIRTUAL_LINE_Y):
-        self.line_y     = line_y
-        self.counted    = {}       # track_id → last cy
-        self.counts     = defaultdict(int)   # class_name → count
-        self.total      = 0
+    def __init__(self):
+        self.prev_pos   = {}   # track_id → (cx, cy)
+        self.counted    = defaultdict(set)  # arm → set of track_id
+        self.counts_arm = defaultdict(lambda: defaultdict(int))
+        self.unique_total = 0
         self._lock      = threading.Lock()
 
-    def update(self, track_id: int, cy: int, class_name: str,
+    def update(self, track_id: int, cx: int, cy: int, class_name: str,
                speed_kmh: float, camera: str) -> bool:
         """Returns True jika crossing terjadi pada frame ini."""
         with self._lock:
-            prev_cy = self.counted.get(track_id)
-            self.counted[track_id] = cy
-            if prev_cy is None:
+            prev = self.prev_pos.get(track_id)
+            self.prev_pos[track_id] = (cx, cy)
+            if prev is None:
                 return False
-            # Deteksi lintasan garis (dari atas ke bawah ATAU bawah ke atas)
-            crossed = (prev_cy < self.line_y <= cy) or (prev_cy > self.line_y >= cy)
-            if crossed:
-                direction = "↓ Turun" if cy >= prev_cy else "↑ Naik"
-                self.counts[class_name] += 1
-                self.total += 1
-                db_insert_crossing(camera, track_id, class_name, speed_kmh, direction)
-                write_log(f"[LINE] {class_name} #{track_id} {direction} {speed_kmh:.1f} km/h")
-                return True
-            return False
+
+            px, py = prev
+            crossed_any = False
+            for arm, cfg in COUNTING_LINES.items():
+                if track_id in self.counted[arm]:
+                    continue
+                crossed = False
+                if cfg["type"] == "H":
+                    # Garis horizontal: cek apakah lintasi y, dan cx dalam range x
+                    in_range = cfg["x1"] <= cx <= cfg["x2"]
+                    crossed  = in_range and ((py < cfg["y"] <= cy) or (py > cfg["y"] >= cy))
+                else:
+                    # Garis vertikal: cek apakah lintasi x, dan cy dalam range y
+                    in_range = cfg["y1"] <= cy <= cfg["y2"]
+                    crossed  = in_range and ((px < cfg["x"] <= cx) or (px > cfg["x"] >= cx))
+
+                if crossed:
+                    # Tentukan event masuk / keluar berdasarkan lengan persimpangan
+                    if arm == "Utara":
+                        event = "masuk" if cy > py else "keluar"
+                    elif arm == "Selatan":
+                        event = "masuk" if cy < py else "keluar"
+                    elif arm == "Barat":
+                        event = "masuk" if cx > px else "keluar"
+                    elif arm == "Timur":
+                        event = "masuk" if cx < px else "keluar"
+                    else:
+                        event = "lintas"
+
+                    # Hitung unique vehicles
+                    is_new_unique = True
+                    for a, track_set in self.counted.items():
+                        if track_id in track_set:
+                            is_new_unique = False
+                            break
+                    if is_new_unique:
+                        self.unique_total += 1
+
+                    self.counted[arm].add(track_id)
+                    self.counts_arm[arm][event] += 1
+                    
+                    # Store as Arm-Event
+                    dir_label = f"{arm}-{event}"
+                    db_insert_crossing(camera, track_id, class_name, speed_kmh, dir_label)
+                    write_log(f"[LINE] {class_name} #{track_id} {dir_label} {speed_kmh:.1f} km/h")
+                    crossed_any = True
+
+            return crossed_any
 
     def get_summary(self) -> dict:
         with self._lock:
-            return {"total": self.total, "per_class": dict(self.counts)}
+            # Mengembalikan total unik dan dictionary masuk/keluar per lengan
+            return {"unique_total": self.unique_total, "per_arm": {k: dict(v) for k, v in self.counts_arm.items()}}
 
     def remove(self, track_id: int):
         with self._lock:
-            self.counted.pop(track_id, None)
+            self.prev_pos.pop(track_id, None)
+            for arm in self.counted.values():
+                arm.discard(track_id)
 
 
 # ===============================================================
@@ -389,7 +458,7 @@ class DetectionThread(QThread):
 
         self.kf_trackers    = {}
         self.speed_estimator = SpeedEstimator(fps=FALLBACK_FPS)
-        self.line_counter    = VirtualLineCounter(VIRTUAL_LINE_Y)
+        self.line_counter    = VirtualLineCounter()
 
         # Throttle DB insert: jangan tulis setiap frame
         self._last_db_write  = defaultdict(float)
@@ -449,7 +518,7 @@ class DetectionThread(QThread):
                             direction = classify_direction(vx, vy)
 
                             # Virtual line crossing
-                            self.line_counter.update(obj_id, cy, name, speed_kmh, self.camera_name)
+                            self.line_counter.update(obj_id, cx, cy, name, speed_kmh, self.camera_name)
 
                             # DB insert (throttled)
                             now = time.time()
@@ -539,11 +608,16 @@ class VideoThread(QThread):
                 if not detections:
                     self.background_frame = frame.copy()
 
-                # ── Gambar virtual counting line ──
-                cv2.line(frame, (0, VIRTUAL_LINE_Y), (w_frame, VIRTUAL_LINE_Y),
-                         (0, 255, 255), 2)
-                cv2.putText(frame, "COUNTING LINE", (10, VIRTUAL_LINE_Y - 8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                # ── Gambar virtual counting line multi-arah ──
+                for arm, cfg in COUNTING_LINES.items():
+                    if cfg["type"] == "H":
+                        cv2.line(frame, (cfg["x1"], cfg["y"]), (cfg["x2"], cfg["y"]), (0,255,255), 2)
+                        cv2.putText(frame, arm, (cfg["x1"], cfg["y"]-8),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1)
+                    else:
+                        cv2.line(frame, (cfg["x"], cfg["y1"]), (cfg["x"], cfg["y2"]), (0,255,255), 2)
+                        cv2.putText(frame, arm, (cfg["x"]+5, cfg["y1"]+20),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1)
 
                 if detections:
                     current_ids = []
@@ -630,6 +704,61 @@ class VideoThread(QThread):
 
 
 # ===============================================================
+#  EDIT LINES DIALOG
+# ===============================================================
+from PyQt6.QtWidgets import QDialog, QFormLayout, QSpinBox, QDialogButtonBox
+
+class LineEditorDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⚙️ Edit Koordinat Garis")
+        self.setMinimumWidth(350)
+        self.setStyleSheet("""
+            QDialog {background:#0f172a; color:#e2e8f0; font-family: 'Segoe UI', Arial;}
+            QLabel {color:#e2e8f0; font-weight:bold;}
+            QFrame#LineCard {background:#1e293b; border-radius:6px; border:1px solid #334155; padding: 10px;}
+            QSpinBox {background:#0f172a; color:#00ffcc; border:1px solid #334155; padding:4px;}
+            QPushButton {background:#3b82f6; color:white; border-radius:4px; padding:6px 12px; font-weight:bold;}
+            QPushButton:hover {background:#60a5fa;}
+        """)
+        layout = QVBoxLayout(self)
+        self.spins = {}
+
+        for arm, cfg in COUNTING_LINES.items():
+            gb = QFrame(); gb.setObjectName("LineCard")
+            gl = QFormLayout(gb)
+            lbl = QLabel(f"LENGAN {arm.upper()} ({'Horizontal' if cfg['type']=='H' else 'Vertikal'})")
+            lbl.setStyleSheet("color:#f59e0b;")
+            layout.addWidget(lbl)
+            
+            arm_spins = {}
+            keys = ["y", "x1", "x2"] if cfg["type"] == "H" else ["x", "y1", "y2"]
+            for k in keys:
+                sb = QSpinBox()
+                sb.setRange(0, 3000)
+                sb.setValue(cfg[k])
+                gl.addRow(k.upper(), sb)
+                arm_spins[k] = sb
+            
+            layout.addWidget(gb)
+            self.spins[arm] = arm_spins
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        btns.button(QDialogButtonBox.StandardButton.Save).setStyleSheet("background:#10b981;")
+        layout.addWidget(btns)
+
+    def get_new_config(self):
+        new_cfg = {}
+        for arm, cfg in COUNTING_LINES.items():
+            c = {"type": cfg["type"]}
+            for k, sb in self.spins[arm].items():
+                c[k] = sb.value()
+            new_cfg[arm] = c
+        return new_cfg
+
+# ===============================================================
 #  MAIN WINDOW
 # ===============================================================
 class SIGAPWindow(QMainWindow):
@@ -679,12 +808,18 @@ class SIGAPWindow(QMainWindow):
         cl.addWidget(QLabel("📹")); cl.addWidget(self.stream_combo)
         cl.addStretch()
 
+        self.btn_edit_lines = QPushButton("⚙️ Edit Garis"); self.btn_edit_lines.setObjectName("BtnNormal")
         self.btn_pause = QPushButton("⏸ Pause"); self.btn_pause.setObjectName("BtnWarning")
         self.btn_stop  = QPushButton("⏹ Stop");  self.btn_stop.setObjectName("BtnDanger")
+        
+        self.btn_edit_lines.setFixedSize(110,32)
         for b in [self.btn_pause, self.btn_stop]: b.setFixedSize(110,32)
+        
+        self.btn_edit_lines.clicked.connect(self.open_edit_lines)
         self.btn_pause.clicked.connect(self.toggle_pause)
         self.btn_stop.clicked.connect(self.stop_stream)
-        cl.addWidget(self.btn_pause); cl.addWidget(self.btn_stop)
+        
+        cl.addWidget(self.btn_edit_lines); cl.addWidget(self.btn_pause); cl.addWidget(self.btn_stop)
         left.addWidget(ctrl)
         root.addLayout(left, stretch=7)
 
@@ -774,6 +909,8 @@ class SIGAPWindow(QMainWindow):
             QFrame#MetricCard{background:#1e293b;border-radius:6px;border:1px solid #334155;}
             QPushButton{color:#fff;border:none;border-radius:5px;font-weight:bold;background:#3b82f6;}
             QPushButton:hover{background:#60a5fa;}
+            QPushButton#BtnNormal{background:#3b82f6;}
+            QPushButton#BtnNormal:hover{background:#60a5fa;}
             QPushButton#BtnWarning{background:#f59e0b;}
             QPushButton#BtnWarning:hover{background:#fbbf24;}
             QPushButton#BtnDanger{background:#ef4444;}
@@ -789,6 +926,7 @@ class SIGAPWindow(QMainWindow):
     def init_stream(self):
         if os.path.exists(LOG_FILE): os.remove(LOG_FILE)
         write_log("=== SIGAP v2.0 START ===")
+        load_lines_config()
         self.stream_fps = detect_stream_fps(CURRENT_STREAM_URL)
 
         cam_name = next((n for n,u in STREAM_URLS.items() if u==CURRENT_STREAM_URL), "Unknown")
@@ -861,9 +999,16 @@ class SIGAPWindow(QMainWindow):
     def _update_line_counter_label(self):
         if not hasattr(self, 'detection_thread'): return
         summary = self.detection_thread.get_line_summary()
-        self.lbl_crossings.setText(str(summary['total']))
-        per_class = summary['per_class']
-        detail = " | ".join(f"{k}: {v}" for k,v in sorted(per_class.items())) or "Belum ada"
+        self.lbl_crossings.setText(str(summary.get('unique_total', 0)))
+        
+        detail_lines = []
+        for arm in ["Utara", "Selatan", "Barat", "Timur"]:
+            counts = summary.get('per_arm', {}).get(arm, {})
+            m = counts.get('masuk', 0); k = counts.get('keluar', 0)
+            if m > 0 or k > 0:
+                detail_lines.append(f"{arm} → in:{m} out:{k}")
+            
+        detail = "\n".join(detail_lines) if detail_lines else "Belum ada"
         self.lbl_line_detail.setText(detail)
 
     def update_stats(self, stats):
@@ -880,6 +1025,14 @@ class SIGAPWindow(QMainWindow):
         self.status_labels['status'].setStyleSheet(
             "color:#f0883e;font-size:16px;font-weight:bold;" if paused
             else "color:#3fb950;font-size:16px;font-weight:bold;")
+
+    def open_edit_lines(self):
+        global COUNTING_LINES
+        dlg = LineEditorDialog(self)
+        if dlg.exec():
+            COUNTING_LINES.update(dlg.get_new_config())
+            save_lines_config()
+            write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
     def stop_stream(self):
         if hasattr(self, 'video_thread'):   self.video_thread.stop()

@@ -40,4 +40,4 @@ def inspect_db(db_name):
 
 if __name__ == "__main__":
     # Pastikan nama file sesuai dengan yang kamu sebutkan (sigap_taffic.db)
-    inspect_db("sigap_taffic.db")
+    inspect_db("sigap_traffic.db")
