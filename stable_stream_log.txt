@@ -1,0 +1,12 @@
+[14:17:25.471] === STABLE STREAM v2 - Modern GUI ===
+[14:17:25.471] Mendeteksi FPS asli stream...
+[14:17:27.910] ffprobe raw output: '25/1,25/1
+
+25/1,25/1'
+[14:17:27.910] FPS terdeteksi: 25.000
+[14:17:27.910] Buffer: 1500 frames (60s @ 25.00 FPS)
+[14:17:27.912] Berhasil memuat data kalibrasi geospasial: geospatial_calibration.json
+[14:17:27.982] Loading YOLO model /home/reynboo/YOLO26/ModelTest/best_traffic_model.pt...
+[14:17:28.027] YOLO model loaded successfully. (MiDaS depth removed for performance)
+[14:17:46.005] Trajectory Map saved to trajectory_output_20260301_141745.png
+[14:17:46.037] Koneksi putus, mencoba reconnect...
