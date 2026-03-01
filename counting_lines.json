@@ -1,0 +1,28 @@
+{
+    "http://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_SugengJeroni2.stream/playlist.m3u8": {
+        "Utara": {
+            "type": "H",
+            "y": 338,
+            "x1": 612,
+            "x2": 859
+        },
+        "Selatan": {
+            "type": "H",
+            "y": 649,
+            "x1": 0,
+            "x2": 1920
+        },
+        "Barat": {
+            "type": "V",
+            "x": 0,
+            "y1": 310,
+            "y2": 641
+        },
+        "Timur": {
+            "type": "V",
+            "x": 1684,
+            "y1": 281,
+            "y2": 513
+        }
+    }
+}

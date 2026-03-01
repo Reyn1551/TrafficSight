@@ -40,6 +40,7 @@ FALLBACK_FPS   = 25.0
 OVERSPEED_KMH  = 60.0
 SPEED_CAP_KMH  = 140.0
 LINES_FILE     = "counting_lines.json"
+IS_EDITING_LINES = False
 
 # ── Virtual counting line (4 Lengan Persimpangan) ──
 COUNTING_LINES = {
@@ -614,10 +615,16 @@ class VideoThread(QThread):
                         cv2.line(frame, (cfg["x1"], cfg["y"]), (cfg["x2"], cfg["y"]), (0,255,255), 2)
                         cv2.putText(frame, arm, (cfg["x1"], cfg["y"]-8),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1)
+                        if IS_EDITING_LINES:
+                            cv2.circle(frame, (cfg["x1"], cfg["y"]), 12, (0,0,255), -1)
+                            cv2.circle(frame, (cfg["x2"], cfg["y"]), 12, (0,0,255), -1)
                     else:
                         cv2.line(frame, (cfg["x"], cfg["y1"]), (cfg["x"], cfg["y2"]), (0,255,255), 2)
                         cv2.putText(frame, arm, (cfg["x"]+5, cfg["y1"]+20),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,255), 1)
+                        if IS_EDITING_LINES:
+                            cv2.circle(frame, (cfg["x"], cfg["y1"]), 12, (0,0,255), -1)
+                            cv2.circle(frame, (cfg["x"], cfg["y2"]), 12, (0,0,255), -1)
 
                 if detections:
                     current_ids = []
@@ -704,59 +711,84 @@ class VideoThread(QThread):
 
 
 # ===============================================================
-#  EDIT LINES DIALOG
+#  EDIT LINES DRAG & DROP
 # ===============================================================
-from PyQt6.QtWidgets import QDialog, QFormLayout, QSpinBox, QDialogButtonBox
-
-class LineEditorDialog(QDialog):
+class VideoLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("⚙️ Edit Koordinat Garis")
-        self.setMinimumWidth(350)
-        self.setStyleSheet("""
-            QDialog {background:#0f172a; color:#e2e8f0; font-family: 'Segoe UI', Arial;}
-            QLabel {color:#e2e8f0; font-weight:bold;}
-            QFrame#LineCard {background:#1e293b; border-radius:6px; border:1px solid #334155; padding: 10px;}
-            QSpinBox {background:#0f172a; color:#00ffcc; border:1px solid #334155; padding:4px;}
-            QPushButton {background:#3b82f6; color:white; border-radius:4px; padding:6px 12px; font-weight:bold;}
-            QPushButton:hover {background:#60a5fa;}
-        """)
-        layout = QVBoxLayout(self)
-        self.spins = {}
+        self.active_arm = None
+        self.active_attr = None
+        self.setMouseTracking(True)
 
+    def get_frame_coords(self, x_label, y_label):
+        if not self.pixmap() or self.pixmap().isNull(): return 0, 0
+        lbl_w, lbl_h = self.width(), self.height()
+        frame_w, frame_h = WIDTH, HEIGHT
+
+        scale_w = lbl_w / frame_w
+        scale_h = lbl_h / frame_h
+        scale = min(scale_w, scale_h)
+
+        pix_w = int(frame_w * scale)
+        pix_h = int(frame_h * scale)
+
+        pad_x = (lbl_w - pix_w) / 2
+        pad_y = (lbl_h - pix_h) / 2
+
+        x_frame = int((x_label - pad_x) / scale)
+        y_frame = int((y_label - pad_y) / scale)
+        return x_frame, y_frame
+
+    def mousePressEvent(self, ev):
+        if not IS_EDITING_LINES: return
+        x_f, y_f = self.get_frame_coords(ev.pos().x(), ev.pos().y())
+        min_dist = 60
+        self.active_arm = None
+        self.active_attr = None
+        
         for arm, cfg in COUNTING_LINES.items():
-            gb = QFrame(); gb.setObjectName("LineCard")
-            gl = QFormLayout(gb)
-            lbl = QLabel(f"LENGAN {arm.upper()} ({'Horizontal' if cfg['type']=='H' else 'Vertikal'})")
-            lbl.setStyleSheet("color:#f59e0b;")
-            layout.addWidget(lbl)
-            
-            arm_spins = {}
-            keys = ["y", "x1", "x2"] if cfg["type"] == "H" else ["x", "y1", "y2"]
-            for k in keys:
-                sb = QSpinBox()
-                sb.setRange(0, 3000)
-                sb.setValue(cfg[k])
-                gl.addRow(k.upper(), sb)
-                arm_spins[k] = sb
-            
-            layout.addWidget(gb)
-            self.spins[arm] = arm_spins
+            pts = [("start", cfg["x1"], cfg["y"]), ("end", cfg["x2"], cfg["y"])] if cfg["type"] == "H" else \
+                  [("start", cfg["x"], cfg["y1"]), ("end", cfg["x"], cfg["y2"])]
+            for ptype, px, py in pts:
+                dist = math.hypot(x_f - px, y_f - py)
+                if dist < min_dist:
+                    min_dist = dist
+                    self.active_arm = arm
+                    self.active_attr = ptype
 
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        btns.button(QDialogButtonBox.StandardButton.Save).setStyleSheet("background:#10b981;")
-        layout.addWidget(btns)
+    def mouseMoveEvent(self, ev):
+        if not IS_EDITING_LINES:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
 
-    def get_new_config(self):
-        new_cfg = {}
-        for arm, cfg in COUNTING_LINES.items():
-            c = {"type": cfg["type"]}
-            for k, sb in self.spins[arm].items():
-                c[k] = sb.value()
-            new_cfg[arm] = c
-        return new_cfg
+        x_f, y_f = self.get_frame_coords(ev.pos().x(), ev.pos().y())
+        if not self.active_arm:
+            hovering = False
+            for arm, cfg in COUNTING_LINES.items():
+                pts = [(cfg["x1"], cfg["y"]), (cfg["x2"], cfg["y"])] if cfg["type"] == "H" else \
+                      [(cfg["x"], cfg["y1"]), (cfg["x"], cfg["y2"])]
+                if any(math.hypot(x_f - px, y_f - py) < 60 for px, py in pts):
+                    hovering = True
+            self.setCursor(Qt.CursorShape.PointingHandCursor if hovering else Qt.CursorShape.CrossCursor)
+            return
+
+        x_f = max(0, min(WIDTH, x_f))
+        y_f = max(0, min(HEIGHT, y_f))
+        
+        cfg = COUNTING_LINES[self.active_arm]
+        if cfg["type"] == "H":
+            cfg["y"] = y_f
+            if self.active_attr == "start": cfg["x1"] = x_f
+            else: cfg["x2"] = x_f
+        else:
+            cfg["x"] = x_f
+            if self.active_attr == "start": cfg["y1"] = y_f
+            else: cfg["y2"] = y_f
+
+    def mouseReleaseEvent(self, ev):
+        if self.active_arm:
+            self.active_arm = None
+            save_lines_config()
 
 # ===============================================================
 #  MAIN WINDOW
@@ -777,7 +809,7 @@ class SIGAPWindow(QMainWindow):
         # ── LEFT: Video + Controls ──
         left = QVBoxLayout()
 
-        self.video_label = QLabel()
+        self.video_label = VideoLabel()
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setMinimumSize(960, 540)
         vf = QFrame(); vf.setObjectName("VideoFrame")
@@ -1027,10 +1059,16 @@ class SIGAPWindow(QMainWindow):
             else "color:#3fb950;font-size:16px;font-weight:bold;")
 
     def open_edit_lines(self):
-        global COUNTING_LINES
-        dlg = LineEditorDialog(self)
-        if dlg.exec():
-            COUNTING_LINES.update(dlg.get_new_config())
+        global IS_EDITING_LINES
+        IS_EDITING_LINES = not IS_EDITING_LINES
+        if IS_EDITING_LINES:
+            self.btn_edit_lines.setText("💾 Simpan Garis")
+            self.btn_edit_lines.setStyleSheet("background:#10b981;") # Green active
+            self.status_bar.showMessage("EDIT MODE: Tarik (drag) lingkaran merah di video untuk mengubah garis.")
+        else:
+            self.btn_edit_lines.setText("⚙️ Edit Garis")
+            self.btn_edit_lines.setStyleSheet("") # Reset to theme
+            self.status_bar.showMessage("Stream aktif — SIGAP v2.0 | Edit Mode selesai.")
             save_lines_config()
             write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
