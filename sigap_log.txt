@@ -1,11 +1,131 @@
-[14:59:29.539] === SIGAP v2.0 START ===
-[14:59:29.539] Mendeteksi FPS asli stream...
-[14:59:32.337] FPS terdeteksi: 25.000
-[14:59:32.340] Kalibrasi geospasial dimuat. ppm_x=50.00 ppm_y=50.00
-[14:59:33.962] Loading YOLO model /home/reynboo/YOLO26/ModelTest/best_traffic_model.pt...
-[14:59:34.013] YOLO model loaded.
-[14:59:38.513] [LINE] motorcycle #25 Timur-masuk 16.5 km/h
-[14:59:47.358] [LINE] motorcycle #32 Timur-masuk 14.3 km/h
-[14:59:49.519] [LINE] motorcycle #32 Selatan-keluar 19.7 km/h
-[14:59:49.980] Trajectory saved: trajectory_20260301_145949.png
-[14:59:49.997] Koneksi putus, mencoba reconnect...
+[07:12:09.913] === SIGAP v2.0 START ===
+[07:12:09.914] Mendeteksi FPS asli stream...
+[07:12:11.699] FPS terdeteksi: 25.000
+[07:12:11.701] Kalibrasi geospasial dimuat. ppm_x=50.00 ppm_y=50.00
+[07:12:14.854] Loading YOLO model /home/reynboo/YOLO26/ModelTest/best_traffic_model.pt...
+[07:12:14.974] YOLO model loaded.
+[07:12:16.598] [LINE] motorcycle #11 Selatan-masuk 49.9 km/h
+[07:12:16.995] [LINE] motorcycle #26 Utara-masuk 9.5 km/h
+[07:12:17.035] [LINE] car #3 Selatan-keluar 20.9 km/h
+[07:12:18.054] [LINE] car #10 Selatan-keluar 17.2 km/h
+[07:12:19.689] [LINE] motorcycle #15 Selatan-keluar 23.0 km/h
+[07:12:20.048] [LINE] motorcycle #26 Selatan-keluar 25.7 km/h
+[07:12:20.050] [LINE] car #57 Selatan-masuk 16.7 km/h
+[07:12:24.269] [LINE] motorcycle #98 Selatan-keluar 15.2 km/h
+[07:12:24.476] [LINE] motorcycle #82 Selatan-masuk 43.4 km/h
+[07:12:26.029] [LINE] motorcycle #125 Timur-masuk 7.8 km/h
+[07:12:26.590] [LINE] motorcycle #116 Selatan-masuk 31.2 km/h
+[07:12:26.710] [LINE] motorcycle #142 Timur-masuk 4.0 km/h
+[07:12:27.633] [LINE] motorcycle #141 Selatan-keluar 7.0 km/h
+[07:12:28.625] [LINE] motorcycle #150 Selatan-masuk 14.6 km/h
+[07:12:28.911] [LINE] car #178 Timur-masuk 6.3 km/h
+[07:12:30.755] [LINE] car #198 Timur-masuk 4.6 km/h
+[07:12:30.759] [LINE] motorcycle #213 Selatan-keluar 5.1 km/h
+[07:12:33.668] [LINE] car #198 Selatan-keluar 25.1 km/h
+[07:12:33.753] [LINE] car #296 Timur-masuk 5.9 km/h
+[07:12:35.750] [LINE] car #347 Timur-masuk 5.9 km/h
+[07:12:37.071] [LINE] car #296 Selatan-keluar 22.4 km/h
+[07:12:37.230] [LINE] motorcycle #354 Utara-masuk 20.5 km/h
+[07:12:37.705] [LINE] motorcycle #388 Timur-masuk 11.0 km/h
+[07:12:38.383] [LINE] car #390 Timur-masuk 5.3 km/h
+[07:12:39.152] [LINE] motorcycle #409 Timur-masuk 6.5 km/h
+[07:12:39.385] [LINE] car #379 Selatan-keluar 18.9 km/h
+[07:12:40.787] [LINE] car #420 Timur-masuk 6.0 km/h
+[07:12:41.828] [LINE] motorcycle #457 Selatan-keluar 11.7 km/h
+[07:12:42.465] [LINE] motorcycle #394 Selatan-keluar 16.5 km/h
+[07:12:44.490] [LINE] car #420 Selatan-keluar 22.0 km/h
+[07:12:46.705] [LINE] motorcycle #543 Selatan-keluar 23.7 km/h
+[07:12:47.470] [LINE] car #551 Timur-masuk 11.3 km/h
+[07:12:49.065] [LINE] motorcycle #571 Timur-masuk 13.4 km/h
+[07:12:49.512] [LINE] motorcycle #590 Timur-masuk 4.5 km/h
+[07:12:49.976] [LINE] motorcycle #578 Selatan-keluar 22.2 km/h
+[07:12:51.340] [LINE] motorcycle #611 Selatan-keluar 18.7 km/h
+[07:12:53.781] [LINE] motorcycle #623 Selatan-masuk 28.9 km/h
+[07:12:55.050] [LINE] motorcycle #643 Selatan-masuk 42.1 km/h
+[07:12:55.453] [LINE] motorcycle #652 Selatan-masuk 45.8 km/h
+[07:12:55.861] [LINE] motorcycle #659 Selatan-masuk 33.3 km/h
+[07:12:55.979] [LINE] motorcycle #670 Selatan-masuk 44.7 km/h
+[07:12:56.021] [LINE] motorcycle #653 Selatan-masuk 18.5 km/h
+[07:12:56.713] [LINE] motorcycle #736 Selatan-masuk 21.6 km/h
+[07:12:56.862] [LINE] motorcycle #741 Selatan-masuk 35.8 km/h
+[07:12:57.302] [LINE] motorcycle #751 Selatan-masuk 41.3 km/h
+[07:12:57.860] [LINE] motorcycle #758 Selatan-masuk 42.5 km/h
+[07:12:57.981] [LINE] motorcycle #643 Utara-keluar 21.5 km/h
+[07:12:58.061] [LINE] motorcycle #746 Selatan-masuk 30.6 km/h
+[07:12:59.268] [LINE] motorcycle #777 Selatan-masuk 29.3 km/h
+[07:13:00.260] [LINE] car #839 Selatan-masuk 28.9 km/h
+[07:13:00.385] [LINE] motorcycle #840 Selatan-masuk 20.9 km/h
+[07:13:00.585] [LINE] motorcycle #912 Selatan-masuk 23.1 km/h
+[07:13:00.909] [LINE] motorcycle #905 Selatan-masuk 10.0 km/h
+[07:13:01.346] [LINE] motorcycle #824 Utara-keluar 11.4 km/h
+[07:13:01.542] [LINE] motorcycle #925 Selatan-masuk 22.5 km/h
+[07:13:01.861] [LINE] motorcycle #963 Selatan-masuk 24.6 km/h
+[07:13:02.459] [LINE] motorcycle #1032 Selatan-masuk 11.3 km/h
+[07:13:02.738] [LINE] motorcycle #983 Selatan-masuk 30.2 km/h
+[07:13:02.862] [LINE] motorcycle #999 Selatan-masuk 9.0 km/h
+[07:13:02.980] [LINE] motorcycle #1017 Selatan-masuk 29.6 km/h
+[07:13:04.105] [LINE] motorcycle #1058 Selatan-masuk 9.9 km/h
+[07:13:04.580] [LINE] motorcycle #1051 Utara-keluar 12.1 km/h
+[07:13:04.811] [LINE] motorcycle #1084 Selatan-masuk 35.9 km/h
+[07:13:05.397] [LINE] motorcycle #1112 Selatan-masuk 50.2 km/h
+[07:13:05.779] [LINE] car #1053 Selatan-masuk 41.6 km/h
+[07:13:05.781] [LINE] motorcycle #1041 Utara-keluar 4.8 km/h
+[07:13:06.460] [LINE] car #839 Timur-keluar 8.7 km/h
+[07:13:06.580] [LINE] car #1114 Selatan-masuk 29.0 km/h
+[07:13:07.063] [LINE] motorcycle #1187 Timur-masuk 18.7 km/h
+[07:13:08.580] [LINE] motorcycle #1227 Selatan-masuk 26.7 km/h
+[07:13:08.820] [LINE] motorcycle #1203 Utara-keluar 9.9 km/h
+[07:13:09.626] [LINE] motorcycle #1285 Selatan-masuk 9.3 km/h
+[07:13:09.897] [LINE] motorcycle #1270 Selatan-masuk 43.9 km/h
+[07:13:10.066] [LINE] motorcycle #1290 Selatan-masuk 20.3 km/h
+[07:13:10.263] [LINE] car #1258 Selatan-masuk 39.3 km/h
+[07:13:10.745] [LINE] motorcycle #1308 Timur-masuk 18.8 km/h
+[07:13:11.660] [LINE] car #1320 Selatan-masuk 22.0 km/h
+[07:13:13.340] [LINE] car #1351 Selatan-masuk 43.8 km/h
+[07:13:13.619] [LINE] car #1114 Timur-keluar 9.9 km/h
+[07:13:13.897] [LINE] car #1381 Timur-masuk 7.3 km/h
+[07:13:14.705] [LINE] motorcycle #1410 Selatan-masuk 83.6 km/h
+[07:13:14.779] [LINE] motorcycle #1340 Utara-keluar 16.5 km/h
+[07:13:14.943] [LINE] motorcycle #1392 Timur-keluar 10.0 km/h
+[07:13:15.711] [LINE] motorcycle #1430 Selatan-masuk 58.0 km/h
+[07:13:16.421] [LINE] car #1258 Timur-keluar 13.0 km/h
+[07:13:16.500] [LINE] car #1381 Selatan-keluar 31.5 km/h
+[07:13:17.465] [LINE] car #1431 Timur-keluar 11.1 km/h
+[07:13:19.022] [LINE] car #1351 Timur-keluar 12.3 km/h
+[07:13:20.061] [LINE] motorcycle #1460 Selatan-keluar 28.5 km/h
+[07:13:21.177] [LINE] motorcycle #1491 Selatan-keluar 28.2 km/h
+[07:13:22.068] [LINE] motorcycle #1458 Timur-keluar 25.0 km/h
+[07:13:23.221] [LINE] motorcycle #1493 Timur-keluar 24.4 km/h
+[07:13:23.499] [LINE] motorcycle #1546 Selatan-keluar 41.0 km/h
+[07:13:24.703] [LINE] motorcycle #1524 Timur-keluar 23.1 km/h
+[07:13:26.901] [LINE] motorcycle #1580 Selatan-keluar 27.3 km/h
+[07:13:27.061] [LINE] motorcycle #1612 Selatan-keluar 28.5 km/h
+[07:13:27.582] [LINE] motorcycle #1598 Selatan-keluar 26.8 km/h
+[07:13:27.787] [LINE] car #1536 Timur-keluar 14.0 km/h
+[07:13:28.381] [LINE] motorcycle #1639 Selatan-keluar 29.2 km/h
+[07:13:30.497] [LINE] motorcycle #1694 Selatan-keluar 36.5 km/h
+[07:13:30.697] [LINE] motorcycle #1701 Selatan-keluar 29.4 km/h
+[07:13:32.302] [LINE] motorcycle #1684 Timur-keluar 28.9 km/h
+[07:13:33.106] [LINE] motorcycle #1736 Selatan-keluar 32.5 km/h
+[07:13:33.298] [LINE] motorcycle #1753 Selatan-keluar 26.7 km/h
+[07:13:33.707] [LINE] motorcycle #1766 Selatan-keluar 35.6 km/h
+[07:13:34.942] [LINE] motorcycle #1775 Selatan-keluar 28.9 km/h
+[07:13:35.435] [LINE] motorcycle #1821 Selatan-masuk 29.9 km/h
+[07:13:35.506] [LINE] motorcycle #1793 Selatan-keluar 32.8 km/h
+[07:13:35.590] [LINE] car #1810 Timur-masuk 4.4 km/h
+[07:13:36.874] [LINE] car #1728 Timur-keluar 17.6 km/h
+[07:13:38.225] [LINE] motorcycle #1897 Selatan-masuk 45.2 km/h
+[07:13:38.900] [LINE] motorcycle #1824 Timur-keluar 2.1 km/h
+[07:13:39.707] [LINE] motorcycle #1899 Timur-keluar 22.2 km/h
+[07:13:39.986] [LINE] car #1965 Selatan-keluar 21.0 km/h
+[07:13:40.905] [LINE] motorcycle #1928 Selatan-keluar 27.0 km/h
+[07:13:42.741] [LINE] motorcycle #1958 Timur-keluar 15.2 km/h
+[07:13:44.539] [LINE] car #1889 Timur-keluar 13.3 km/h
+[07:13:45.305] [LINE] motorcycle #2094 Utara-keluar 9.9 km/h
+[07:13:47.465] [LINE] car #1981 Timur-keluar 15.0 km/h
+[07:13:50.745] [LINE] motorcycle #2121 Selatan-keluar 33.6 km/h
+[07:13:51.595] [LINE] motorcycle #2129 Selatan-masuk 34.5 km/h
+[07:13:53.539] [LINE] motorcycle #2149 Selatan-masuk 39.9 km/h
+[07:13:55.221] Trajectory saved: trajectory_20260423_071355.png
+[07:13:55.238] Koneksi putus, mencoba reconnect...
+[07:13:57.624] Trajectory saved: trajectory_20260423_071357.png
