@@ -29,7 +29,8 @@ CURRENT_STREAM_URL = STREAM_URLS["Sugeng Jeroni 2"]
 
 WIDTH = 1920
 HEIGHT = 1080
-LOG_FILE = "stable_stream_log.txt"
+LOG_FILE = os.path.join("output", "logs", "stable_stream_log.txt")
+TRAJECTORY_DIR = os.path.join("output", "trajectories")
 BUFFER_SECONDS = 60
 FALLBACK_FPS = 25.0
 
@@ -38,6 +39,7 @@ def write_log(text):
     timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     line = f"[{timestamp}] {text}"
     print(line)
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
 
@@ -566,7 +568,8 @@ class VideoThread(QThread):
         cv2.putText(result_img, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"trajectory_output_{timestamp}.png"
+        os.makedirs(TRAJECTORY_DIR, exist_ok=True)
+        filename = os.path.join(TRAJECTORY_DIR, f"trajectory_output_{timestamp}.png")
         cv2.imwrite(filename, result_img)
         write_log(f"Trajectory Map saved to {filename}")
 

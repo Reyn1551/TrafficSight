@@ -24,5 +24,31 @@
             "y1": 281,
             "y2": 513
         }
+    },
+    "https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Wirosaban_View_Barat.stream/playlist.m3u8": {
+        "Utara": {
+            "type": "H",
+            "y": 260,
+            "x1": 1188,
+            "x2": 1734
+        },
+        "Selatan": {
+            "type": "H",
+            "y": 921,
+            "x1": 191,
+            "x2": 1751
+        },
+        "Barat": {
+            "type": "V",
+            "x": 469,
+            "y1": 341,
+            "y2": 641
+        },
+        "Timur": {
+            "type": "V",
+            "x": 1752,
+            "y1": 281,
+            "y2": 945
+        }
     }
 }

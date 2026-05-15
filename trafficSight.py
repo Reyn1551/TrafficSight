@@ -7,7 +7,8 @@ import time
 import os
 import sys
 import json
-import sqlite3
+import psycopg2
+from db_config import DB_CONFIG
 import math
 from datetime import datetime
 from collections import defaultdict, deque
@@ -19,11 +20,11 @@ from PyQt6.QtGui import QImage, QPixmap, QFont, QColor
 from filterpy.kalman import KalmanFilter
 
 # ============================================================
-#  SIGAP — Sistem Intelijen Geospasial Analitik Pemantauan
+#  TrafficSight — Sistem Intelijen Geospasial Analitik Pemantauan
 #  Lalu Lintas Kota Yogyakarta
-#  v2.0 — Fixed cx bug + SQLite logging + Virtual Line Counter
+#  v2.1 — Fixed cx bug + PostgreSQL logging + Virtual Line Counter
 # ============================================================
-
+#https://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_Pingit4.stream/playlist.m3u8
 STREAM_URLS = {
     "Sugeng Jeroni 2":       "http://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_SugengJeroni2.stream/playlist.m3u8",
     "Simpang Wirosaban Barat":"https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Wirosaban_View_Barat.stream/playlist.m3u8",
@@ -33,8 +34,9 @@ CURRENT_STREAM_URL = STREAM_URLS["Sugeng Jeroni 2"]
 
 WIDTH          = 1920
 HEIGHT         = 1080
-LOG_FILE       = "sigap_log.txt"
-DB_FILE        = "sigap_traffic.db"
+LOG_FILE       = os.path.join("output", "logs", "TrafficSight_log.txt")
+TRAJECTORY_DIR = os.path.join("output", "trajectories")
+DB_NAME        = DB_CONFIG["dbname"]
 BUFFER_SECONDS = 60
 FALLBACK_FPS   = 25.0
 OVERSPEED_KMH  = 60.0
@@ -80,18 +82,21 @@ def write_log(text):
     ts   = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     line = f"[{ts}] {text}"
     print(line)
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
 
 
 # ===============================================================
-#  DATABASE (SQLite)
+#  DATABASE (PostgreSQL)
 # ===============================================================
-def init_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    conn.execute("""
+def init_db():
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = False
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS detections (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            id          SERIAL  PRIMARY KEY,
             timestamp   TEXT    NOT NULL,
             camera      TEXT    NOT NULL,
             track_id    INTEGER NOT NULL,
@@ -103,9 +108,9 @@ def init_db() -> sqlite3.Connection:
             is_overspeed INTEGER DEFAULT 0
         )
     """)
-    conn.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS line_crossings (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            id          SERIAL  PRIMARY KEY,
             timestamp   TEXT    NOT NULL,
             camera      TEXT    NOT NULL,
             track_id    INTEGER NOT NULL,
@@ -115,7 +120,8 @@ def init_db() -> sqlite3.Connection:
         )
     """)
     conn.commit()
-    write_log(f"Database siap: {DB_FILE}")
+    cur.close()
+    write_log(f"Database PostgreSQL siap: {DB_NAME}")
     return conn
 
 DB_CONN = init_db()
@@ -124,23 +130,27 @@ DB_LOCK = threading.Lock()
 def db_insert_detection(camera, track_id, class_name, speed_kmh, cx, cy, direction):
     ts = datetime.now().isoformat(sep=" ", timespec="milliseconds")
     with DB_LOCK:
-        DB_CONN.execute(
+        cur = DB_CONN.cursor()
+        cur.execute(
             "INSERT INTO detections (timestamp,camera,track_id,class_name,speed_kmh,cx,cy,direction,is_overspeed) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (ts, camera, track_id, class_name, round(speed_kmh,1), cx, cy, direction,
              1 if speed_kmh > OVERSPEED_KMH else 0)
         )
         DB_CONN.commit()
+        cur.close()
 
 def db_insert_crossing(camera, track_id, class_name, speed_kmh, direction):
     ts = datetime.now().isoformat(sep=" ", timespec="milliseconds")
     with DB_LOCK:
-        DB_CONN.execute(
+        cur = DB_CONN.cursor()
+        cur.execute(
             "INSERT INTO line_crossings (timestamp,camera,track_id,class_name,speed_kmh,direction) "
-            "VALUES (?,?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s,%s)",
             (ts, camera, track_id, class_name, round(speed_kmh,1), direction)
         )
         DB_CONN.commit()
+        cur.close()
 
 
 # ===============================================================
@@ -702,10 +712,11 @@ class VideoThread(QThread):
             return
         result = cv2.add(self.background_frame, self.trajectory_mask)
         cam    = next((n for n,u in STREAM_URLS.items() if u==CURRENT_STREAM_URL), "Unknown")
-        cv2.putText(result,"SIGAP — TRAJECTORY MAP",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
+        cv2.putText(result,"TrafficSight — TRAJECTORY MAP",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
         cv2.putText(result,f"Location: {cam}",(30,90),cv2.FONT_HERSHEY_SIMPLEX,0.8,(255,255,255),2)
         cv2.putText(result,datetime.now().strftime("%Y-%m-%d %H:%M:%S"),(30,120),cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,200,200),1)
-        fname = f"trajectory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        os.makedirs(TRAJECTORY_DIR, exist_ok=True)
+        fname = os.path.join(TRAJECTORY_DIR, f"trajectory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         cv2.imwrite(fname, result)
         write_log(f"Trajectory saved: {fname}")
 
@@ -793,10 +804,10 @@ class VideoLabel(QLabel):
 # ===============================================================
 #  MAIN WINDOW
 # ===============================================================
-class SIGAPWindow(QMainWindow):
+class TrafficSightWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SIGAP - Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
+        self.setWindowTitle("TrafficSight - Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
         self.setMinimumSize(1500, 900)
         self._setup_theme()
 
@@ -858,7 +869,7 @@ class SIGAPWindow(QMainWindow):
         # ── RIGHT: Analytics Panel ──
         right = QVBoxLayout(); right.setSpacing(10)
 
-        hdr = QLabel("SIGAP ANALYTICS")
+        hdr = QLabel("TrafficSight ANALYTICS")
         hdr.setStyleSheet("color:#00ffcc;font-size:15px;font-weight:800;letter-spacing:2px;padding:8px;")
         hdr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right.addWidget(hdr)
@@ -957,7 +968,7 @@ class SIGAPWindow(QMainWindow):
     # ── STREAM INIT ────────────────────────────────────────
     def init_stream(self):
         if os.path.exists(LOG_FILE): os.remove(LOG_FILE)
-        write_log("=== SIGAP v2.0 START ===")
+        write_log("=== TrafficSight v2.0 START ===")
         load_lines_config()
         self.stream_fps = detect_stream_fps(CURRENT_STREAM_URL)
 
@@ -991,7 +1002,7 @@ class SIGAPWindow(QMainWindow):
         self.video_thread.start()
         self.status_labels['status'].setText("STREAM ACTIVE")
         self.status_labels['status'].setStyleSheet("color:#10b981;font-size:14px;font-weight:bold;")
-        self.status_bar.showMessage(f"Stream Online — SIGAP Core Engine | Database: {DB_FILE}")
+        self.status_bar.showMessage(f"Stream Online — TrafficSight Core Engine | Database: PostgreSQL/{DB_NAME}")
 
     # ── FRAME UPDATE ───────────────────────────────────────
     def update_frame(self, frame):
@@ -1068,7 +1079,7 @@ class SIGAPWindow(QMainWindow):
         else:
             self.btn_edit_lines.setText("CONFIG LINES")
             self.btn_edit_lines.setStyleSheet("") # Reset to theme
-            self.status_bar.showMessage("Stream Online — SIGAP Core Engine | Configuration saved.")
+            self.status_bar.showMessage("Stream Online — TrafficSight Core Engine | Configuration saved.")
             save_lines_config()
             write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
@@ -1111,6 +1122,6 @@ class SIGAPWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setFont(QFont("Segoe UI", 10))
-    win = SIGAPWindow()
+    win = TrafficSightWindow()
     win.show()
     sys.exit(app.exec())

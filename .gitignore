@@ -1,0 +1,36 @@
+# ===============================
+#  TrafficSight — .gitignore
+# ===============================
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+
+# ── Output (runtime-generated) ──
+output/
+*.db
+
+# ── Log files ──
+*.log
+*.txt
+!README.txt
+!requirements.txt
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Setup script (utility, bukan bagian app) ──
+setup_db.sh
