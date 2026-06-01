@@ -8,7 +8,11 @@ import os
 import sys
 import json
 import psycopg2
-from db_config import DB_CONFIG
+from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.extras import execute_batch
+from db_config import DB_CONFIG, MINIO_CONFIG
+from minio import Minio
+import io
 import math
 from datetime import datetime
 from collections import defaultdict, deque
@@ -25,6 +29,7 @@ from filterpy.kalman import KalmanFilter
 #  v2.1 — Fixed cx bug + PostgreSQL logging + Virtual Line Counter
 # ============================================================
 #https://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_Pingit4.stream/playlist.m3u8
+#https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Wirosaban_View_Barat.stream/playlist.m3u8
 STREAM_URLS = {
     "Sugeng Jeroni 2":       "http://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_SugengJeroni2.stream/playlist.m3u8",
     "Simpang Wirosaban Barat":"https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Wirosaban_View_Barat.stream/playlist.m3u8",
@@ -88,69 +93,291 @@ def write_log(text):
 
 
 # ===============================================================
-#  DATABASE (PostgreSQL)
+#  DATABASE & STORAGE (PostgreSQL & MinIO)
 # ===============================================================
-def init_db():
-    conn = psycopg2.connect(**DB_CONFIG)
-    conn.autocommit = False
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS detections (
-            id          SERIAL  PRIMARY KEY,
-            timestamp   TEXT    NOT NULL,
-            camera      TEXT    NOT NULL,
-            track_id    INTEGER NOT NULL,
-            class_name  TEXT    NOT NULL,
-            speed_kmh   REAL    NOT NULL,
-            cx          INTEGER,
-            cy          INTEGER,
-            direction   TEXT,
-            is_overspeed INTEGER DEFAULT 0
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS line_crossings (
-            id          SERIAL  PRIMARY KEY,
-            timestamp   TEXT    NOT NULL,
-            camera      TEXT    NOT NULL,
-            track_id    INTEGER NOT NULL,
-            class_name  TEXT    NOT NULL,
-            speed_kmh   REAL    NOT NULL,
-            direction   TEXT
-        )
-    """)
-    conn.commit()
-    cur.close()
-    write_log(f"Database PostgreSQL siap: {DB_NAME}")
-    return conn
+DB_POOL = None
+MINIO_CLIENT = None
+db_queue = queue.Queue()
 
-DB_CONN = init_db()
-DB_LOCK = threading.Lock()
+class DatabaseWorkerThread(threading.Thread):
+    def __init__(self, db_pool, db_queue):
+        super().__init__()
+        self.db_pool = db_pool
+        self.db_queue = db_queue
+        self.running = True
+        self.daemon = True
+        
+    def run(self):
+        write_log("[DB_WORKER] Thread database background aktif.")
+        batch_size = 50
+        max_wait = 1.0  # seconds
+        
+        while self.running or not self.db_queue.empty():
+            batch_dets = []
+            batch_crossings = []
+            batch_trajectories = []
+            start_time = time.time()
+            
+            while len(batch_dets) + len(batch_crossings) + len(batch_trajectories) < batch_size:
+                elapsed = time.time() - start_time
+                remaining = max_wait - elapsed
+                if remaining <= 0:
+                    break
+                try:
+                    if not self.running and self.db_queue.empty():
+                        break
+                    item = self.db_queue.get(timeout=min(0.1, max(0.001, remaining)))
+                    table, data = item
+                    if table == 'detections':
+                        batch_dets.append(data)
+                    elif table == 'line_crossings':
+                        batch_crossings.append(data)
+                    elif table == 'trajectories':
+                        batch_trajectories.append(data)
+                    self.db_queue.task_done()
+                except queue.Empty:
+                    if not self.running:
+                        break
+                    continue
+            
+            if batch_dets or batch_crossings or batch_trajectories:
+                conn = None
+                try:
+                    conn = self.db_pool.getconn()
+                    cur = conn.cursor()
+                    
+                    if batch_dets:
+                        query = """
+                            INSERT INTO detections (timestamp, camera, track_id, class_name, speed_kmh, cx, cy, direction, is_overspeed)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """
+                        execute_batch(cur, query, batch_dets)
+                        
+                    if batch_crossings:
+                        query = """
+                            INSERT INTO line_crossings (timestamp, camera, track_id, class_name, speed_kmh, direction, snapshot_url)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        execute_batch(cur, query, batch_crossings)
+                        
+                    if batch_trajectories:
+                        query = """
+                            INSERT INTO trajectories (timestamp, camera, object_key, object_url)
+                            VALUES (%s, %s, %s, %s)
+                        """
+                        execute_batch(cur, query, batch_trajectories)
+                        
+                    conn.commit()
+                    cur.close()
+                except Exception as e:
+                    write_log(f"[DB_WORKER] Error executing batch insert: {e}")
+                    if conn:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                finally:
+                    if conn:
+                        self.db_pool.putconn(conn)
+            else:
+                time.sleep(0.05)
+        write_log("[DB_WORKER] Thread database background selesai/graceful shutdown.")
+
+def init_db():
+    global DB_POOL
+    try:
+        DB_POOL = ThreadedConnectionPool(1, 10, **DB_CONFIG)
+        conn = DB_POOL.getconn()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS detections (
+                id          SERIAL  PRIMARY KEY,
+                timestamp   TEXT    NOT NULL,
+                camera      TEXT    NOT NULL,
+                track_id    INTEGER NOT NULL,
+                class_name  TEXT    NOT NULL,
+                speed_kmh   REAL    NOT NULL,
+                cx          INTEGER,
+                cy          INTEGER,
+                direction   TEXT,
+                is_overspeed INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS line_crossings (
+                id          SERIAL  PRIMARY KEY,
+                timestamp   TEXT    NOT NULL,
+                camera      TEXT    NOT NULL,
+                track_id    INTEGER NOT NULL,
+                class_name  TEXT    NOT NULL,
+                speed_kmh   REAL    NOT NULL,
+                direction   TEXT,
+                snapshot_url TEXT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trajectories (
+                id          SERIAL  PRIMARY KEY,
+                timestamp   TEXT    NOT NULL,
+                camera      TEXT    NOT NULL,
+                object_key  TEXT    NOT NULL,
+                object_url  TEXT    NOT NULL
+            )
+        """)
+        
+        # DDL Index Recommendations
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_detections_camera ON detections (camera);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_detections_overspeed ON detections (is_overspeed);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_detections_cam_ts ON detections (camera, timestamp);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_detections_overspeed_ts ON detections (is_overspeed, timestamp);")
+        
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_line_crossings_timestamp ON line_crossings (timestamp);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_line_crossings_camera ON line_crossings (camera);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_line_crossings_cam_ts ON line_crossings (camera, timestamp);")
+        
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_trajectories_timestamp ON trajectories (timestamp);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_trajectories_camera ON trajectories (camera);")
+        
+        conn.commit()
+        cur.close()
+        DB_POOL.putconn(conn)
+        write_log(f"Database PostgreSQL siap dengan Connection Pool (1-10): {DB_NAME}")
+    except Exception as e:
+        write_log(f"Gagal inisialisasi Database: {e}")
+        raise e
+
+def init_minio():
+    global MINIO_CLIENT
+    try:
+        MINIO_CLIENT = Minio(
+            endpoint=MINIO_CONFIG["endpoint"],
+            access_key=MINIO_CONFIG["access_key"],
+            secret_key=MINIO_CONFIG["secret_key"],
+            secure=MINIO_CONFIG["secure"]
+        )
+        bucket = MINIO_CONFIG["bucket_name"]
+        if not MINIO_CLIENT.bucket_exists(bucket):
+            MINIO_CLIENT.make_bucket(bucket)
+            write_log(f"[MINIO] Bucket '{bucket}' berhasil dibuat.")
+            
+            # Buat bucket policy agar public read-only
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{bucket}/*"]
+                    }
+                ]
+            }
+            MINIO_CLIENT.set_bucket_policy(bucket, json.dumps(policy))
+            write_log(f"[MINIO] Kebijakan public read-only diatur pada bucket '{bucket}'.")
+        else:
+            write_log(f"[MINIO] Menggunakan bucket eksis '{bucket}'.")
+    except Exception as e:
+        write_log(f"Gagal inisialisasi MinIO Client: {e}")
+        MINIO_CLIENT = None
+
+# Inisialisasi Database dan MinIO
+init_db()
+init_minio()
+db_worker = DatabaseWorkerThread(DB_POOL, db_queue)
+db_worker.start()
 
 def db_insert_detection(camera, track_id, class_name, speed_kmh, cx, cy, direction):
     ts = datetime.now().isoformat(sep=" ", timespec="milliseconds")
-    with DB_LOCK:
-        cur = DB_CONN.cursor()
-        cur.execute(
-            "INSERT INTO detections (timestamp,camera,track_id,class_name,speed_kmh,cx,cy,direction,is_overspeed) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (ts, camera, track_id, class_name, round(speed_kmh,1), cx, cy, direction,
-             1 if speed_kmh > OVERSPEED_KMH else 0)
-        )
-        DB_CONN.commit()
-        cur.close()
+    db_queue.put(('detections', (ts, camera, track_id, class_name, round(speed_kmh, 1), cx, cy, direction, 1 if speed_kmh > OVERSPEED_KMH else 0)))
 
-def db_insert_crossing(camera, track_id, class_name, speed_kmh, direction):
+def db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, snapshot_url):
     ts = datetime.now().isoformat(sep=" ", timespec="milliseconds")
-    with DB_LOCK:
-        cur = DB_CONN.cursor()
-        cur.execute(
-            "INSERT INTO line_crossings (timestamp,camera,track_id,class_name,speed_kmh,direction) "
-            "VALUES (%s,%s,%s,%s,%s,%s)",
-            (ts, camera, track_id, class_name, round(speed_kmh,1), direction)
-        )
-        DB_CONN.commit()
-        cur.close()
+    db_queue.put(('line_crossings', (ts, camera, track_id, class_name, round(speed_kmh, 1), direction, snapshot_url)))
+
+def db_insert_trajectory(camera, timestamp, object_key, object_url):
+    db_queue.put(('trajectories', (timestamp, camera, object_key, object_url)))
+
+def async_upload_snapshot(frame, camera, track_id, reason, class_name, speed_kmh, direction, bbox=None, parent_window=None):
+    # Jalankan upload asinkron dalam thread terpisah
+    dt = datetime.now()
+    upload_thread = threading.Thread(
+        target=_upload_snapshot_worker,
+        args=(frame, camera, track_id, reason, class_name, speed_kmh, direction, bbox, dt, parent_window),
+        daemon=True
+    )
+    upload_thread.start()
+    
+    # Tambahkan ke daftar thread aktif di main window untuk graceful shutdown
+    if parent_window and hasattr(parent_window, 'active_upload_threads'):
+        parent_window.active_upload_threads.append(upload_thread)
+
+def _upload_snapshot_worker(frame, camera, track_id, reason, class_name, speed_kmh, direction, bbox, dt, parent_window):
+    try:
+        if frame is None:
+            write_log("[MINIO] Frame kosong, tidak bisa mengunggah snapshot.")
+            db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, None)
+            return
+
+        write_log(f"[MINIO] Memulai upload snapshot asinkron untuk {camera} track #{track_id}...")
+        
+        # Crop frame berdasarkan bbox jika tersedia
+        cropped = None
+        if bbox is not None:
+            h, w = frame.shape[:2]
+            x1, y1, x2, y2 = bbox
+            x1 = max(0, int(x1))
+            y1 = max(0, int(y1))
+            x2 = min(w, int(x2))
+            y2 = min(h, int(y2))
+            if x2 > x1 and y2 > y1:
+                cropped = frame[y1:y2, x1:x2]
+        
+        if cropped is None:
+            cropped = frame
+
+        # Encode ke JPEG dengan kualitas 85%
+        success, encoded_img = cv2.imencode('.jpg', cropped, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        if not success:
+            write_log("[MINIO] Gagal meng-encode snapshot ke JPEG.")
+            db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, None)
+            return
+        
+        file_data = io.BytesIO(encoded_img.tobytes())
+        file_len = len(file_data.getvalue())
+        
+        # Format nama object: snapshots/{camera_clean}/{tahun}/{bulan}/{hari}/track_{track_id}_{reason}_{timestamp}.jpg
+        camera_clean = camera.replace(' ', '_').lower()
+        year = dt.strftime("%Y")
+        month = dt.strftime("%m")
+        day = dt.strftime("%d")
+        timestamp = dt.strftime("%Y%m%d_%H%M%S")
+        object_key = f"snapshots/{camera_clean}/{year}/{month}/{day}/track_{track_id}_{reason}_{timestamp}.jpg"
+        
+        if MINIO_CLIENT:
+            MINIO_CLIENT.put_object(
+                MINIO_CONFIG["bucket_name"],
+                object_key,
+                file_data,
+                file_len,
+                content_type="image/jpeg"
+            )
+            
+            # Buat public URL aksesibel
+            object_url = f"http://{MINIO_CONFIG['endpoint']}/{MINIO_CONFIG['bucket_name']}/{object_key}"
+            write_log(f"[MINIO] Upload snapshot sukses! Object Key: {object_key}")
+            
+            # Catat ke DB
+            db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, object_url)
+        else:
+            write_log("[MINIO] Client MinIO tidak terinisialisasi. Upload snapshot dilewati.")
+            db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, None)
+    except Exception as e:
+        write_log(f"[MINIO] Exception saat upload snapshot: {e}")
+        try:
+            db_insert_crossing(camera, track_id, class_name, speed_kmh, direction, None)
+        except Exception:
+            pass
 
 
 # ===============================================================
@@ -209,7 +436,7 @@ class StableStreamer:
 
     def start(self):
         self.proc   = subprocess.Popen(self.cmd, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, bufsize=10**8)
+                                       stderr=subprocess.DEVNULL, bufsize=10**8)
         self.thread = threading.Thread(target=self._update, daemon=True)
         self.thread.start()
         return self
@@ -217,20 +444,48 @@ class StableStreamer:
     def _update(self):
         frame_size = self.width * self.height * 3
         while not self.stopped:
-            raw = self.proc.stdout.read(frame_size)
-            if len(raw) != frame_size:
-                write_log("Koneksi putus, mencoba reconnect...")
-                with self._lock: self.proc.kill()
-                time.sleep(2)
-                with self._lock:
-                    self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE,
-                                                 stderr=subprocess.PIPE, bufsize=10**8)
-                continue
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((self.height, self.width, 3))
             try:
-                self.q.put(frame, timeout=5.0)
-            except queue.Full:
-                pass   # drop frame silently
+                raw = self.proc.stdout.read(frame_size)
+                if len(raw) != frame_size:
+                    if self.stopped:
+                        break
+                    write_log("Koneksi stream putus, mencoba reconnect...")
+                    with self._lock:
+                        if self.proc:
+                            try:
+                                self.proc.kill()
+                                self.proc.wait(timeout=2.0)
+                            except Exception:
+                                pass
+                    time.sleep(2)
+                    if self.stopped:
+                        break
+                    with self._lock:
+                        self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE,
+                                                     stderr=subprocess.DEVNULL, bufsize=10**8)
+                    continue
+                frame = np.frombuffer(raw, dtype=np.uint8).reshape((self.height, self.width, 3))
+                try:
+                    self.q.put(frame, timeout=2.0)
+                except queue.Full:
+                    pass   # drop frame silently
+            except Exception as e:
+                write_log(f"[Streamer] Error pada thread update: {e}")
+                time.sleep(2)
+                if self.stopped:
+                    break
+                try:
+                    with self._lock:
+                        if self.proc:
+                            try:
+                                self.proc.kill()
+                                self.proc.wait(timeout=2.0)
+                            except Exception:
+                                pass
+                        self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE,
+                                                     stderr=subprocess.DEVNULL, bufsize=10**8)
+                except Exception as ex:
+                    write_log(f"[Streamer] Gagal melakukan recovery stream: {ex}")
 
     def read(self, timeout=10.0):
         return self.q.get(timeout=timeout)
@@ -241,7 +496,12 @@ class StableStreamer:
     def stop(self):
         self.stopped = True
         with self._lock:
-            if self.proc: self.proc.kill()
+            if self.proc:
+                try:
+                    self.proc.kill()
+                    self.proc.wait(timeout=2.0)
+                except Exception:
+                    pass
 
 
 # ===============================================================
@@ -386,7 +646,7 @@ class VirtualLineCounter:
         self._lock      = threading.Lock()
 
     def update(self, track_id: int, cx: int, cy: int, class_name: str,
-               speed_kmh: float, camera: str) -> bool:
+               speed_kmh: float, camera: str, frame=None, bbox=None, parent_window=None) -> bool:
         """Returns True jika crossing terjadi pada frame ini."""
         with self._lock:
             prev = self.prev_pos.get(track_id)
@@ -436,8 +696,8 @@ class VirtualLineCounter:
                     
                     # Store as Arm-Event
                     dir_label = f"{arm}-{event}"
-                    db_insert_crossing(camera, track_id, class_name, speed_kmh, dir_label)
-                    write_log(f"[LINE] {class_name} #{track_id} {dir_label} {speed_kmh:.1f} km/h")
+                    async_upload_snapshot(frame, camera, track_id, f"crossing_{dir_label}", class_name, speed_kmh, dir_label, bbox, parent_window)
+                    write_log(f"[LINE] {class_name} #{track_id} {dir_label} {speed_kmh:.1f} km/h - Snapshot upload started asynchronously.")
                     crossed_any = True
 
             return crossed_any
@@ -458,10 +718,11 @@ class VirtualLineCounter:
 #  DETECTION THREAD
 # ===============================================================
 class DetectionThread(QThread):
-    def __init__(self, model_path: str, camera_name: str = "Unknown"):
+    def __init__(self, model_path: str, camera_name: str = "Unknown", parent_window=None):
         super().__init__()
         self.model_path  = model_path
         self.camera_name = camera_name
+        self.parent_window = parent_window
         self.running     = True
         self._lock       = threading.Lock()
         self.frame_to_process = None
@@ -529,7 +790,7 @@ class DetectionThread(QThread):
                             direction = classify_direction(vx, vy)
 
                             # Virtual line crossing
-                            self.line_counter.update(obj_id, cx, cy, name, speed_kmh, self.camera_name)
+                            self.line_counter.update(obj_id, cx, cy, name, speed_kmh, self.camera_name, frame=frame, bbox=(x1, y1, x2, y2), parent_window=self.parent_window)
 
                             # DB insert (throttled)
                             now = time.time()
@@ -570,6 +831,20 @@ class DetectionThread(QThread):
         self.running = False
         self.wait()
 
+    def clear_trackers(self):
+        with self._lock:
+            self.kf_trackers.clear()
+            self.speed_estimator.speed_smoothing.clear()
+            self._last_db_write.clear()
+            self.detections.clear()
+            # Clear line counter states
+            self.line_counter.prev_pos.clear()
+            self.line_counter.counted.clear()
+            self.line_counter.counts_arm.clear()
+            self.line_counter.unique_total = 0
+            self.frame_to_process = None
+            write_log(f"[TRACKER] Semua tracker dan data analitik untuk {self.camera_name} dibersihkan.")
+
 
 # ===============================================================
 #  VIDEO THREAD
@@ -578,12 +853,13 @@ class VideoThread(QThread):
     frame_ready = pyqtSignal(np.ndarray)
     stats_ready = pyqtSignal(dict)
 
-    def __init__(self, streamer, fps, detection_thread=None):
+    def __init__(self, streamer, fps, detection_thread=None, parent_window=None):
         super().__init__()
         self.streamer        = streamer
         self.fps             = fps
         self.detection_thread = detection_thread
         self.frame_duration  = 1.0 / fps
+        self.parent_window   = parent_window
         self.running = True
         self.paused  = False
         self.frame_count  = 0
@@ -707,6 +983,12 @@ class VideoThread(QThread):
         self._save_trajectory()
         self.wait()
 
+    def clear_cache(self):
+        self.last_centroids.clear()
+        self.trajectory_mask = None
+        self.background_frame = None
+        write_log("[VIDEO] Cache trajektori dan centroid dibersihkan.")
+
     def _save_trajectory(self):
         if self.trajectory_mask is None or self.background_frame is None:
             return
@@ -715,10 +997,60 @@ class VideoThread(QThread):
         cv2.putText(result,"TrafficSight — TRAJECTORY MAP",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
         cv2.putText(result,f"Location: {cam}",(30,90),cv2.FONT_HERSHEY_SIMPLEX,0.8,(255,255,255),2)
         cv2.putText(result,datetime.now().strftime("%Y-%m-%d %H:%M:%S"),(30,120),cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,200,200),1)
-        os.makedirs(TRAJECTORY_DIR, exist_ok=True)
-        fname = os.path.join(TRAJECTORY_DIR, f"trajectory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-        cv2.imwrite(fname, result)
-        write_log(f"Trajectory saved: {fname}")
+        
+        # Jalankan upload asinkron dalam thread terpisah
+        dt = datetime.now()
+        upload_thread = threading.Thread(
+            target=self._upload_trajectory_worker,
+            args=(result, cam, dt),
+            daemon=False
+        )
+        upload_thread.start()
+        
+        # Tambahkan ke daftar thread aktif di main window untuk graceful shutdown
+        if self.parent_window and hasattr(self.parent_window, 'active_upload_threads'):
+            self.parent_window.active_upload_threads.append(upload_thread)
+
+    def _upload_trajectory_worker(self, result_image, cam, dt):
+        try:
+            write_log(f"[MINIO] Memulai upload gambar trajektori secara asinkron untuk {cam}...")
+            # Encode ke PNG
+            success, encoded_img = cv2.imencode('.png', result_image)
+            if not success:
+                write_log("[MINIO] Gagal meng-encode gambar trajektori ke PNG.")
+                return
+            
+            file_data = io.BytesIO(encoded_img.tobytes())
+            file_len = len(file_data.getvalue())
+            
+            # Format nama objek: trajectories/{camera}/{tahun}/{bulan}/{hari}/{filename}.png
+            cam_clean = cam.replace(' ', '_').lower()
+            year = dt.strftime("%Y")
+            month = dt.strftime("%m")
+            day = dt.strftime("%d")
+            filename = f"trajectory_{dt.strftime('%Y%m%d_%H%M%S')}.png"
+            object_key = f"trajectories/{cam_clean}/{year}/{month}/{day}/{filename}"
+            
+            if MINIO_CLIENT:
+                MINIO_CLIENT.put_object(
+                    MINIO_CONFIG["bucket_name"],
+                    object_key,
+                    file_data,
+                    file_len,
+                    content_type="image/png"
+                )
+                
+                # Buat public URL aksesibel
+                object_url = f"http://{MINIO_CONFIG['endpoint']}/{MINIO_CONFIG['bucket_name']}/{object_key}"
+                write_log(f"[MINIO] Upload sukses! Object Key: {object_key}")
+                
+                # Masukkan metadata ke DB via antrean
+                ts_str = dt.isoformat(sep=" ", timespec="milliseconds")
+                db_insert_trajectory(cam, ts_str, object_key, object_url)
+            else:
+                write_log("[MINIO] Client MinIO tidak terinisialisasi. Upload dilewati.")
+        except Exception as e:
+            write_log(f"[MINIO] Exception saat upload trajektori: {e}")
 
 
 # ===============================================================
@@ -808,6 +1140,7 @@ class TrafficSightWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TrafficSight - Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
+        self.active_upload_threads = []
         self.setMinimumSize(1500, 900)
         self._setup_theme()
 
@@ -976,7 +1309,7 @@ class TrafficSightWindow(QMainWindow):
         self.streamer = StableStreamer(CURRENT_STREAM_URL, WIDTH, HEIGHT, self.stream_fps).start()
 
         model_file = "/home/reynboo/YOLO26/ModelTest/best_traffic_model.pt"
-        self.detection_thread = DetectionThread(model_file, cam_name)
+        self.detection_thread = DetectionThread(model_file, cam_name, parent_window=self)
         self.detection_thread.speed_estimator.fps = self.stream_fps
         self.detection_thread.start()
 
@@ -996,7 +1329,7 @@ class TrafficSightWindow(QMainWindow):
             self._start_video()
 
     def _start_video(self):
-        self.video_thread = VideoThread(self.streamer, self.stream_fps, self.detection_thread)
+        self.video_thread = VideoThread(self.streamer, self.stream_fps, self.detection_thread, parent_window=self)
         self.video_thread.frame_ready.connect(self.update_frame)
         self.video_thread.stats_ready.connect(self.update_stats)
         self.video_thread.start()
@@ -1084,8 +1417,12 @@ class TrafficSightWindow(QMainWindow):
             write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
     def stop_stream(self):
-        if hasattr(self, 'video_thread'):   self.video_thread.stop()
-        if hasattr(self, 'detection_thread'): self.detection_thread.stop()
+        if hasattr(self, 'video_thread'):   
+            self.video_thread.stop()
+            self.video_thread.clear_cache()
+        if hasattr(self, 'detection_thread'): 
+            self.detection_thread.stop()
+            self.detection_thread.clear_trackers()
         self.streamer.stop()
         self.status_labels['status'].setText("OFFLINE")
         self.status_labels['status'].setStyleSheet("color:#da3633;font-size:14px;font-weight:bold;")
@@ -1111,8 +1448,37 @@ class TrafficSightWindow(QMainWindow):
         self.init_stream()
 
     def closeEvent(self, event):
+        write_log("Menutup aplikasi TrafficSight secara graceful...")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        
+        # 1. Hentikan pemrosesan stream dan deteksi
         self.stop_stream()
-        DB_CONN.close()
+        
+        # 2. Hentikan thread worker database dan tunggu hingga antrean kosong
+        global db_worker
+        if 'db_worker' in globals() and db_worker:
+            write_log("Mengosongkan antrean worker database...")
+            db_worker.running = False
+            db_worker.join()
+            
+        # 3. Tunggu hingga semua thread upload trajektori selesai
+        if hasattr(self, 'active_upload_threads') and self.active_upload_threads:
+            write_log("Menunggu upload trajektori yang masih aktif...")
+            for t in self.active_upload_threads:
+                if t.is_alive():
+                    t.join(timeout=5.0)
+                    
+        # 4. Tutup Connection Pool database
+        global DB_POOL
+        if 'DB_POOL' in globals() and DB_POOL:
+            write_log("Menutup PostgreSQL connection pool...")
+            try:
+                DB_POOL.close()
+            except Exception as e:
+                write_log(f"Error saat menutup pool: {e}")
+                
+        QApplication.restoreOverrideCursor()
+        write_log("Shutdown selesai.")
         event.accept()
 
 
