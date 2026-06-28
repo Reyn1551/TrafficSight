@@ -19,7 +19,7 @@ from PyQt6.QtGui import QImage, QPixmap, QFont, QColor
 from filterpy.kalman import KalmanFilter
 
 # ============================================================
-#  SIGAP — Sistem Intelijen Geospasial Analitik Pemantauan
+#  TrafficSight — Sistem Analisis dan Pemantauan Lalu Lintas
 #  Lalu Lintas Kota Yogyakarta
 #  v2.0 — Fixed cx bug + SQLite logging + Virtual Line Counter
 # ============================================================
@@ -27,14 +27,14 @@ from filterpy.kalman import KalmanFilter
 STREAM_URLS = {
     "Sugeng Jeroni 2":       "http://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_SugengJeroni2.stream/playlist.m3u8",
     "Simpang Wirosaban Barat":"https://cctvjss.jogjakota.go.id/atcs/ATCS_Simpang_Wirosaban_View_Barat.stream/playlist.m3u8",
-    "Wirobrajan":            "https://cctvjss.jogjakota.go.id/atcs/ATCS_wirobrajan.stream/playlist.m3u8",
+    "Simpang Pingit":            "https://cctvjss.jogjakota.go.id/atcs/ATCS_Lampu_Merah_Pingit2.stream/playlist.m3u8",
 }
 CURRENT_STREAM_URL = STREAM_URLS["Sugeng Jeroni 2"]
 
 WIDTH          = 1920
 HEIGHT         = 1080
-LOG_FILE       = "sigap_log.txt"
-DB_FILE        = "sigap_traffic.db"
+LOG_FILE       = "trafficSight_log.txt"
+DB_FILE        = "trafficSight_traffic.db"
 BUFFER_SECONDS = 60
 FALLBACK_FPS   = 25.0
 OVERSPEED_KMH  = 60.0
@@ -702,7 +702,7 @@ class VideoThread(QThread):
             return
         result = cv2.add(self.background_frame, self.trajectory_mask)
         cam    = next((n for n,u in STREAM_URLS.items() if u==CURRENT_STREAM_URL), "Unknown")
-        cv2.putText(result,"SIGAP — TRAJECTORY MAP",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
+        cv2.putText(result,"TrafficSight — TRAJECTORY MAP",(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
         cv2.putText(result,f"Location: {cam}",(30,90),cv2.FONT_HERSHEY_SIMPLEX,0.8,(255,255,255),2)
         cv2.putText(result,datetime.now().strftime("%Y-%m-%d %H:%M:%S"),(30,120),cv2.FONT_HERSHEY_SIMPLEX,0.6,(200,200,200),1)
         fname = f"trajectory_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
@@ -793,10 +793,10 @@ class VideoLabel(QLabel):
 # ===============================================================
 #  MAIN WINDOW
 # ===============================================================
-class SIGAPWindow(QMainWindow):
+class TrafficSightWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🚦 SIGAP — Sistem Intelijen Geospasial Analitik Pemantauan Lalu Lintas")
+        self.setWindowTitle("🚦 TrafficSight — Sistem Analisis dan Pemantauan Lalu Lintas")
         self.setMinimumSize(1500, 900)
         self._setup_theme()
 
@@ -858,7 +858,7 @@ class SIGAPWindow(QMainWindow):
         # ── RIGHT: Analytics Panel ──
         right = QVBoxLayout(); right.setSpacing(10)
 
-        hdr = QLabel("SIGAP ANALYTICS")
+        hdr = QLabel("TrafficSight ANALYTICS")
         hdr.setStyleSheet("color:#00ffcc;font-size:15px;font-weight:800;letter-spacing:2px;padding:8px;")
         hdr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         right.addWidget(hdr)
@@ -922,7 +922,7 @@ class SIGAPWindow(QMainWindow):
         self.known_ids     = set()
         self.overspeed_cnt = 0
         self.status_bar    = QStatusBar(); self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("SIGAP siap.")
+        self.status_bar.showMessage("TrafficSight siap.")
 
         # Timer update line counter info setiap 2 detik
         self._line_timer = QTimer()
@@ -957,7 +957,7 @@ class SIGAPWindow(QMainWindow):
     # ── STREAM INIT ────────────────────────────────────────
     def init_stream(self):
         if os.path.exists(LOG_FILE): os.remove(LOG_FILE)
-        write_log("=== SIGAP v2.0 START ===")
+        write_log("=== TrafficSight v2.0 START ===")
         load_lines_config()
         self.stream_fps = detect_stream_fps(CURRENT_STREAM_URL)
 
@@ -991,7 +991,7 @@ class SIGAPWindow(QMainWindow):
         self.video_thread.start()
         self.status_labels['status'].setText("● LIVE")
         self.status_labels['status'].setStyleSheet("color:#10b981;font-size:16px;font-weight:bold;")
-        self.status_bar.showMessage(f"Stream aktif — SIGAP v2.0 | DB: {DB_FILE}")
+        self.status_bar.showMessage(f"Stream aktif — TrafficSight v2.0 | DB: {DB_FILE}")
 
     # ── FRAME UPDATE ───────────────────────────────────────
     def update_frame(self, frame):
@@ -1068,7 +1068,7 @@ class SIGAPWindow(QMainWindow):
         else:
             self.btn_edit_lines.setText("⚙️ Edit Garis")
             self.btn_edit_lines.setStyleSheet("") # Reset to theme
-            self.status_bar.showMessage("Stream aktif — SIGAP v2.0 | Edit Mode selesai.")
+            self.status_bar.showMessage("Stream aktif — TrafficSight v2.0 | Edit Mode selesai.")
             save_lines_config()
             write_log("Koordinat garis counting berhasil di-update dan disimpan.")
 
@@ -1111,6 +1111,6 @@ class SIGAPWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setFont(QFont("Segoe UI", 10))
-    win = SIGAPWindow()
+    win = TrafficSightWindow()
     win.show()
     sys.exit(app.exec())

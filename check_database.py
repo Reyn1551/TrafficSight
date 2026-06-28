@@ -39,5 +39,5 @@ def inspect_db(db_name):
         print(f"[SQL ERROR] Terjadi kesalahan: {e}")
 
 if __name__ == "__main__":
-    # Pastikan nama file sesuai dengan yang kamu sebutkan (sigap_taffic.db)
-    inspect_db("sigap_traffic.db")
+    # Pastikan nama file sesuai dengan yang kamu sebutkan (trafficSight_traffic.db)
+    inspect_db("trafficSight_traffic.db")
