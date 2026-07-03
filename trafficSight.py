@@ -14,14 +14,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QFont, QColor
 
-from trafficsight.config import (
+from config import (
     STREAM_URLS, DEFAULT_STREAM_URL, WIDTH, HEIGHT,
     FALLBACK_FPS, OVERSPEED_KMH, SPEED_CAP_KMH,
 )
-from trafficsight.logger import write_log
-from trafficsight.adapters.streamer import StableStreamer
-from trafficsight.services.tracking import DetectionThread
-from trafficsight.services.line_counter import VirtualLineCounter
+from logger import write_log
+from adapters.streamer import StableStreamer
+from services.tracking import DetectionThread
+from services.line_counter import VirtualLineCounter
 
 
 def detect_stream_fps(url, timeout=15):

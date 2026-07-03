@@ -1,9 +1,9 @@
 import threading
 from collections import defaultdict
 from datetime import datetime
-from trafficsight.logger import write_log
-from trafficsight.adapters.line_config import load_lines_config, save_lines_config
-from trafficsight.domain.entities import LineCrossingEvent
+from logger import write_log
+from adapters.line_config import load_lines_config, save_lines_config
+from domain.entities import LineCrossingEvent
 
 
 class VirtualLineCounter:

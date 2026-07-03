@@ -3,10 +3,10 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extensions import connection as Connection
 from psycopg2.extras import DictCursor
-from trafficsight.domain.ports import DetectionRepository
-from trafficsight.domain.entities import DetectionEvent, LineCrossingEvent
-from trafficsight.config import DATABASE_URL
-from trafficsight.logger import write_log
+from domain.ports import DetectionRepository
+from domain.entities import DetectionEvent, LineCrossingEvent
+from config import DATABASE_URL
+from logger import write_log
 
 
 class PostgresDetectionRepository(DetectionRepository):

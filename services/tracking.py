@@ -4,12 +4,12 @@ import threading
 from datetime import datetime
 from collections import defaultdict
 from PyQt6.QtCore import QThread
-from trafficsight.services.geospatial import SpeedEstimator
-from trafficsight.logger import write_log
-from trafficsight.adapters.postgres_repository import PostgresDetectionRepository
-from trafficsight.domain.entities import DetectionResult, DetectionEvent, LineCrossingEvent
-from trafficsight.services.kalman import KalmanBoxTracker
-from trafficsight.services.line_counter import VirtualLineCounter
+from services.geospatial import SpeedEstimator
+from logger import write_log
+from adapters.postgres_repository import PostgresDetectionRepository
+from domain.entities import DetectionResult, DetectionEvent, LineCrossingEvent
+from services.kalman import KalmanBoxTracker
+from services.line_counter import VirtualLineCounter
 
 
 class DetectionThread(QThread):

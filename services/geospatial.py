@@ -9,8 +9,8 @@ except ImportError:
 
 import numpy as np
 from collections import defaultdict, deque
-from trafficsight.config import GEOSPATIAL_CALIB_FILE, FALLBACK_FPS
-from trafficsight.logger import write_log
+from config import GEOSPATIAL_CALIB_FILE, FALLBACK_FPS
+from logger import write_log
 
 
 class SpeedEstimator:

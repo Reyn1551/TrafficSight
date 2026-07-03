@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict
-from trafficsight.config import LINES_FILE, DEFAULT_COUNTING_LINES
-from trafficsight.logger import write_log
+from config import LINES_FILE, DEFAULT_COUNTING_LINES
+from logger import write_log
 
 
 def load_lines_config(current_stream_url: str) -> Dict[str, Any]:

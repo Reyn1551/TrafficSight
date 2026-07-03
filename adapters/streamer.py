@@ -3,7 +3,7 @@ import numpy as np
 import queue
 import threading
 import time
-from trafficsight.logger import write_log
+from logger import write_log
 
 
 class StableStreamer:
