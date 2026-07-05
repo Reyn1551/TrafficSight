@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trafficsight"
+version = "2.0.0"
+description = "Real-time traffic analytics dashboard for municipal CCTV streams."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "TrafficSight Contributors" },
+]
+keywords = [
+    "traffic", "computer-vision", "yolo", "kalman-filter",
+    "pyqt6", "homography", "cctv", "smart-city",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+dependencies = [
+    "PyQt6>=6.6",
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "psycopg2-binary>=2.9",
+    "filterpy>=1.4.5",
+    "ultralytics>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "black>=23.10",
+    "isort>=5.12",
+    "ruff>=0.1",
+]
+
+[project.urls]
+Documentation = "https://github.com/your-org/TrafficSight/blob/main/docs/DESIGN.md"
+Issues = "https://github.com/your-org/TrafficSight/issues"
+Source = "https://github.com/your-org/TrafficSight"
+
+[project.scripts]
+trafficsight = "trafficsight.app:run"
+trafficsight-calibrate = "trafficsight.tools.geospatial_calibration_gui:main"
+trafficsight-migrate = "trafficsight.tools.migrate_sqlite_to_postgres:main"
+
+[tool.setuptools.packages.find]
+include = ["trafficsight*"]
+
+[tool.setuptools.package-data]
+trafficsight = ["data/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["trafficsight"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line length handled by black
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
